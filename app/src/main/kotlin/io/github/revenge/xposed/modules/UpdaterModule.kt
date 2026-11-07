@@ -34,7 +34,11 @@ data class CustomLoadUrl(val enabled: Boolean = false, val url: String = "")
 data class LoaderConfig(val customLoadUrl: CustomLoadUrl = CustomLoadUrl(), val disableInjection: Boolean = false)
 
 @Serializable
-data class EndpointInfo(val paths: ArrayList<String>, val hash: String? = null, val version: String)
+data class EndpointInfo(
+    val paths: ArrayList<String> = arrayListOf(),
+    val hash: String? = null,
+    val version: String = ""
+)
 
 object UpdaterModule : Module() {
     private lateinit var config: LoaderConfig
@@ -53,7 +57,6 @@ object UpdaterModule : Module() {
     private const val CONFIG_FILE = "loader.json"
 
     private const val DEFAULT_BASE_URL = "https://github.com/Cat-323/roux-bundle-esp/releases/latest/download/"
-    // This is rarely used as now we check for hbc first
     private const val DEFAULT_BUNDLE_NAME = "rain.js"
 
     override fun onLoad(packageParam: XC_LoadPackage.LoadPackageParam) = with(packageParam) {
@@ -93,6 +96,11 @@ object UpdaterModule : Module() {
             return@launch
         }
 
+        // Si es una descarga manual pedida por el usuario, eliminamos el etag viejo
+        if (isExplicit && etag.exists()) {
+            etag.delete()
+        }
+
         try {
             HttpClient(CIO) {
                 expectSuccess = false
@@ -109,7 +117,7 @@ object UpdaterModule : Module() {
 
                 val response: HttpResponse = client.get(targetUrl) {
                     headers {
-                        if (etag.exists() && bundle.exists()) {
+                        if (!isExplicit && etag.exists() && bundle.exists()) {
                             append(HttpHeaders.IfNoneMatch, etag.readText())
                         }
                     }
@@ -177,10 +185,12 @@ object UpdaterModule : Module() {
                 when {
                     info.paths.contains(hbcName) -> DEFAULT_BASE_URL + hbcName
                     info.paths.contains("rain.min.js") -> DEFAULT_BASE_URL + "rain.min.js"
+                    info.paths.contains("rain.js") -> DEFAULT_BASE_URL + "rain.js"
                     else -> DEFAULT_BASE_URL + DEFAULT_BUNDLE_NAME
                 }
             } else DEFAULT_BASE_URL + DEFAULT_BUNDLE_NAME
         } catch (e: Exception) {
+            Log.e("resolveTargetUrl error: ${e.message}", e)
             DEFAULT_BASE_URL + DEFAULT_BUNDLE_NAME
         }
     }
